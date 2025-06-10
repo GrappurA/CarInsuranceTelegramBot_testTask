@@ -6,17 +6,22 @@ using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
+using Mindee;
+using Mindee.Input;
+using Mindee.Product.DriverLicense;
 
 namespace MyTelegramBot
 {
 	class Program
 	{
-		static string token = "8068426185:AAHxN2uBeLvZyQuoZIR49g1KEyVHV5mQZmY";
+
+		static string telegramToken = "8068426185:AAHxN2uBeLvZyQuoZIR49g1KEyVHV5mQZmY";
+		static string mindeeApiKey = "a9851a63943dab08b4a8bbbb9fc9c313";
 		static long? myTelegramId = 875371626;
 
 		static string helpMessage = "/start - Get started with the bot\n/help - Display help message.";
-		static string photoReceivedMessage = "I received your info. Please wait while I analyze it.";
-		static string greetingsMessage = "<b>Greetings!</b>\nI am here to help you buy insurance.\nPlease send a photo of your identity and vehicle document.";
+		static string photoReceivedMessage = "I received your info. Please wait while I analyze it.\n<b>Processing...</b>";
+		static string greetingsMessage = "<b>Greetings!</b>\nI am here to help you buy insurance.\nPlease send a photo of driver license";
 		static string pricingMessage = "Our current insurance price is <b>100 USD</b>.\nAre you comfortable with the price?";
 		static string verifyPricingMessage = "Unfortunately, <b>100 USD</b> is our only pricing plan.";
 		static string pricingAcceptedMessage = "<b>Great!</b>\nGenerating your insurance policy...";
@@ -32,11 +37,30 @@ namespace MyTelegramBot
 		{
 			Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-			Host bot = new(token);
+			Host bot = new(telegramToken);
 			bot.Start();
 			bot.OnMessage += OnMessage;
 			bot.OnCallback += OnCallback;
 			Console.ReadLine();
+		}
+
+		private static async Task<byte[]> DownloadPhotoAsync(ITelegramBotClient client, PhotoSize photo)
+		{
+			try
+			{
+				var fileInfo = await client.GetFile(photo.FileId);
+				if (fileInfo.FilePath == null)
+					return null;
+
+				var fileStream = new MemoryStream();
+				await client.DownloadFile(fileInfo.FilePath, fileStream);
+				return fileStream.ToArray();
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine("Error downloading photo: " + ex.Message);
+				return null;
+			}
 		}
 
 		private static async void OnMessage(ITelegramBotClient client, Update update)
@@ -65,34 +89,65 @@ namespace MyTelegramBot
 
 				if (update.Message?.Type == MessageType.Photo && userStates[id] == BotState.sendPhoto)
 				{
-					await client.SendMessage(id, photoReceivedMessage);
-					await Task.Delay(1000);
+					await client.SendMessage(id, photoReceivedMessage, parseMode: ParseMode.Html);
+					await Task.Delay(600);
 
-					var mindee = new MindeeClient();
-					var data = await mindee.ExtractedDataAsync("passport.jpg", "vehicle.jpg");
-
-					await client.SendMessage(id,
-						$"<b>Name:</b> {data.passportInfo.FullName}\n" +
-						$"<b>Date of Birth:</b> {data.passportInfo.DateOfBirth}\n" +
-						$"<b>Passport Number:</b> {data.passportInfo.PassportNumber}\n\n" +
-						$"<b>Vehicle Brand:</b> {data.vehicleInfo.Brand}\n" +
-						$"<b>Vehicle Model:</b> {data.vehicleInfo.Model}\n" +
-						$"<b>Vehicle Year:</b> {data.vehicleInfo.Year}\n" +
-						$"<b>Vehicle VIN:</b> {data.vehicleInfo.Vin}",
-						parseMode: ParseMode.Html);
-
-					var verifyButtons = new InlineKeyboardMarkup(new[]
+					try
 					{
-						new[]
-						{
-							InlineKeyboardButton.WithCallbackData("✅ Yes", "confirm_yes"),
-							InlineKeyboardButton.WithCallbackData("❌ No", "confirm_no")
-						}
-					});
+						var photo = update.Message.Photo[^1];
+						var photoBytes = await DownloadPhotoAsync(client, photo);
 
-					verifyMessage = await client.SendMessage(id, "Is this data correct?", replyMarkup: verifyButtons);
-					verifyMessageId = verifyMessage.MessageId;
-					userStates[id] = BotState.ConfirmPhotoData;
+						if (photoBytes == null)
+						{
+							await client.SendMessage(id,
+								"Couldn't analyze picture, please, retake the photo and send it again");
+							return;
+						}
+
+						MindeeClient mindeeClient = new(mindeeApiKey);
+						var inputSource = new LocalInputSource(photoBytes, $"license_{photo.FileId}.jpg");
+						//input here
+						var response = await mindeeClient.EnqueueAndParseAsync<DriverLicenseV1>(inputSource);
+						var driverLicense = response.Document.Inference.Prediction;
+
+						string fullName = driverLicense.FirstName?.Value + " " + driverLicense.LastName?.Value ?? "Not found";
+						string dateOfBirth = driverLicense.DateOfBirth?.Value ?? "Not found";
+						string licenseNumber = driverLicense.Id?.Value ?? "Not found";
+						string licenseClass = driverLicense.Category?.Value ?? "Not found";
+						string expiryDate = driverLicense.ExpiryDate?.Value ?? "Not found";
+						string countryCode = driverLicense.CountryCode?.Value ?? "Not found";
+
+						await client.SendMessage(id,
+							$"<b>Full Name:</b> {fullName}\n" +
+							$"<b>Date of Birth:</b> {dateOfBirth}\n" +
+							$"<b>License Number:</b> {licenseNumber}\n" +
+							$"<b>License Class:</b> {licenseClass}\n" +
+							$"<b>Expiry Date:</b> {expiryDate}\n" +
+							$"<b>Address:</b> {countryCode}",
+							parseMode: ParseMode.Html);
+
+						var verifyButtons = new InlineKeyboardMarkup(new[]
+						{
+							new[]
+							{
+								InlineKeyboardButton.WithCallbackData("✅ Yes", "confirm_yes"),
+								InlineKeyboardButton.WithCallbackData("❌ No", "confirm_no")
+							}
+						});
+
+						verifyMessage = await client.SendMessage(id, "Is this data correct?", replyMarkup: verifyButtons);
+						verifyMessageId = verifyMessage.MessageId;
+						userStates[id] = BotState.ConfirmPhotoData;
+
+					}
+					catch (Exception ex)
+					{
+						Console.WriteLine("Error processing driver's licence: " + ex.Message);
+						await client.SendMessage(
+							id,
+						"❌ Error processing your driver license." +
+						" Please make sure the photo is clear and try again.");
+					}
 				}
 				else if (update.Message?.Type == MessageType.Text && userStates[id] == BotState.Start)
 				{
@@ -165,6 +220,7 @@ namespace MyTelegramBot
 						replyMarkup: confrimPricingButtons);
 					flag = true;
 					break;
+
 				case "pricingConfirm_no" when userStates[id] == BotState.AgreeToPricing:
 					await client.EditMessageText(id,
 						editPricingMessage.Id,
