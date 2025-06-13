@@ -1,4 +1,9 @@
 ﻿using CarInsuranceTelegramBot;
+using Mindee;
+using Mindee.Input;
+using Mindee.Product.DriverLicense;
+using PdfSharp.Fonts;
+using PdfSharp.Quality;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -6,9 +11,6 @@ using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
-using Mindee;
-using Mindee.Input;
-using Mindee.Product.DriverLicense;
 
 namespace MyTelegramBot
 {
@@ -18,6 +20,7 @@ namespace MyTelegramBot
 		static string telegramToken = "8068426185:AAHxN2uBeLvZyQuoZIR49g1KEyVHV5mQZmY";
 		static string mindeeApiKey = "a9851a63943dab08b4a8bbbb9fc9c313";
 		static long? myTelegramId = 875371626;
+		static string GeminiApiKey = "AIzaSyBZHC0fNuqQF3PCI0fQoAyFjIayIe0jtwk";
 
 		static string helpMessage = "/start - Get started with the bot\n/help - Display help message.";
 		static string photoReceivedMessage = "I received your info. Please wait while I analyze it.\n<b>Processing...</b>";
@@ -30,6 +33,13 @@ namespace MyTelegramBot
 		static int verifyMessageId;
 		static Message? verifyMessage;
 		static Message? editPricingMessage;
+
+		static string fullName;
+		static string dateOfBirth;
+		static string licenseNumber;
+		static string licenseClass;
+		static string expiryDate;
+		static string countryCode;
 
 		static bool flag = false;
 
@@ -104,18 +114,22 @@ namespace MyTelegramBot
 							return;
 						}
 
-						MindeeClient mindeeClient = new(mindeeApiKey);
-						var inputSource = new LocalInputSource(photoBytes, $"license_{photo.FileId}.jpg");
-						//input here
-						var response = await mindeeClient.EnqueueAndParseAsync<DriverLicenseV1>(inputSource);
-						var driverLicense = response.Document.Inference.Prediction;
-
-						string fullName = driverLicense.FirstName?.Value + " " + driverLicense.LastName?.Value ?? "Not found";
-						string dateOfBirth = driverLicense.DateOfBirth?.Value ?? "Not found";
-						string licenseNumber = driverLicense.Id?.Value ?? "Not found";
-						string licenseClass = driverLicense.Category?.Value ?? "Not found";
-						string expiryDate = driverLicense.ExpiryDate?.Value ?? "Not found";
-						string countryCode = driverLicense.CountryCode?.Value ?? "Not found";
+						//	MindeeClient mindeeClient = new(mindeeApiKey);
+						//	var inputSource = new LocalInputSource(photoBytes, $"license_{photo.FileId}.jpg");
+						//	//input here
+						//	var response = await mindeeClient.EnqueueAndParseAsync<DriverLicenseV1>(inputSource);
+						//	var driverLicense = response.Document.Inference.Prediction;
+						//
+						//	dateOfBirth = driverLicense.DateOfBirth?.Value ?? "Not found";
+						//	licenseNumber = driverLicense.Id?.Value ?? "Not found";
+						//	licenseClass = driverLicense.Category?.Value ?? "Not found";
+						//	expiryDate = driverLicense.ExpiryDate?.Value ?? "Not found";
+						//	countryCode = driverLicense.CountryCode?.Value ?? "Not found";\
+						dateOfBirth = "Not found";
+						licenseNumber = "Not found";
+						licenseClass = "Not found";
+						expiryDate = "Not found";
+						countryCode = "Not found";
 
 						await client.SendMessage(id,
 							$"<b>Full Name:</b> {fullName}\n" +
@@ -166,11 +180,11 @@ namespace MyTelegramBot
 
 			var pricingButtons = new InlineKeyboardMarkup(new[]
 			{
-						new[]
-						{
-							InlineKeyboardButton.WithCallbackData("✅ Yes", "pricing_yes"),
-							InlineKeyboardButton.WithCallbackData("❌ No", "pricing_no")
-						}
+				new[]
+				{
+					InlineKeyboardButton.WithCallbackData("✅ Yes", "pricing_yes"),
+					InlineKeyboardButton.WithCallbackData("❌ No", "pricing_no")
+				}
 			});
 			switch (data)
 			{
@@ -187,7 +201,7 @@ namespace MyTelegramBot
 					break;
 
 				case "confirm_no" when userStates[id] == BotState.ConfirmPhotoData:
-					await client.EditMessageText(id, verifyMessageId, "❌ Please, retake the photos and send them again.");
+					await client.EditMessageText(id, verifyMessageId, "❌ Please, retake the photo and send it again.");
 					userStates[id] = BotState.sendPhoto;
 					break;
 
@@ -200,7 +214,25 @@ namespace MyTelegramBot
 
 					userStates[id] = BotState.sendPolicy;
 					//policy here
+					GlobalFontSettings.FontResolver = new FontReseolver();
+					var policy = PolicyPdfGenerator.GeneratePolicyPdf(fullName, dateOfBirth, licenseNumber, licenseClass, expiryDate, countryCode);
+					using (var stream = new MemoryStream(policy))
+					{
+						Console.WriteLine($"fullName: {fullName}");
+						Console.WriteLine($"dateOfBirth: {dateOfBirth}");
+						Console.WriteLine($"licenseNumber: {licenseNumber}");
+						Console.WriteLine($"licenseClass: {licenseClass}");
+						Console.WriteLine($"expiryDate: {expiryDate}");
+						Console.WriteLine($"countryCode: {countryCode}");
 
+						var doc = InputFile.FromStream(stream, $"CarInsurancePolicy_{DateTime.Today.ToString("dd-MM-yyyy")}");
+
+						await client.SendDocument(
+							chatId: id,
+							document: doc,
+							caption: "📄 Here is your generated insurance policy.\nHave a nice day!"
+						);
+					}
 					break;
 
 				case "pricing_no" when userStates[id] == BotState.AgreeToPricing && !flag:
