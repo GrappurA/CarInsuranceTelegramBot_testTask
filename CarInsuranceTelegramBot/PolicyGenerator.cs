@@ -8,66 +8,91 @@ using System.IO;
 
 public class PolicyPdfGenerator
 {
-	public static byte[] GeneratePolicyPdf(string fullname, string dateOfBirth, string licenseNumber,
-										   string licenseClass, string expiryDate, string countryCode)
+	public static byte[] GeneratePolicyPdf(string fullName, string dateOfBirth, string licenseNumber,
+									   string licenseClass, string expiryDate, string countryCode)
 	{
-		// Dummy data
+		Console.WriteLine($"[GeneratePolicyPdf] fullName={fullName}, dateOfBirth={dateOfBirth}, licenseNumber={licenseNumber}, licenseClass={licenseClass}, expiryDate={expiryDate}, countryCode={countryCode}");
+
+		// Define template as verbatim string so "{{...}}" reaches Scriban intact
 		var model = new
 		{
-			PolicyNumber = $"POL-{Guid.NewGuid().ToString().Substring(0, 8)}",
-			Fullname = fullname,
-			DateofBirth = dateOfBirth,
-			LicenseNumber = licenseNumber,
-			LicenseClass = licenseClass,
-			ExpiryDate = expiryDate,
-			CountryCode = countryCode,
-
+			policy_number = $"POL-{Guid.NewGuid():N}".Substring(0, 8),
+			full_name = fullName,
+			birth_date = dateOfBirth,
+			license_number = licenseNumber,
+			license_class = licenseClass,
+			expiry_date = expiryDate,
+			country_code = countryCode,
 			start_date = DateTime.Now.ToString("yyyy-MM-dd"),
 			end_date = DateTime.Now.AddYears(1).ToString("yyyy-MM-dd")
 		};
+		string policyText = @"
+Insurance Policy Document
+-------------------------
 
-		// Load template from file (or define it inline)
-		string policyText = $"Insurance Policy Document\n" +
-"-------------------------\n\n" +
-"Policy Number   : {{ PolicyNumber }}\n" +
-"Full Name       : {{ Fullname }}\n" +
-"Date of Birth   : {{ DateofBirth }}\n" +
-"License Number  : {{ LicenseNumber }}\n" +
-"License Class   : {{ LicenseClass }}\n" +
-"Expiry Date     : {{ ExpiryDate }}\n" +
-"Country Code    : {{ CountryCode }}\n\n" +
-"-------------------------\n" +
-"Insurance Start date : {{start_date}}\n" +
-"Insurance End date   : {{end_date}}\n" +
-"-------------------------\n\n" +
-"This document certifies that the above-named individual holds a valid insurance policy\n" +
-"in accordance with the terms and conditions set forth by the issuing authority. \n" +
-"This policy is subject to national and international regulations \n" +
-"regarding driver and vehicle coverage.\n\n" +
-"Thank you for choosing our insurance service.\n";
+Policy Number   : {{ policy_number }}
+Full Name       : {{ full_name }}
+Date of Birth   : {{ birth_date }}
+License Number  : {{ license_number }}
+License Class   : {{ license_class }}
+Expiry Date     : {{ expiry_date }}
+Country Code    : {{ country_code }}
+
+-------------------------
+Insurance Start date : {{ start_date }}
+Insurance End date   : {{ end_date }}
+-------------------------
+
+This document certifies that the above-named individual holds a valid insurance policy
+in accordance with the terms and conditions set forth by the issuing authority.
+This policy is subject to national and international regulations
+regarding driver and vehicle coverage.
+
+Thank you for choosing our insurance service.
+";
 
 		var template = Template.Parse(policyText);
-		string filledText = template.Render(model);
+		if (template.HasErrors)
+		{
+			Console.WriteLine("[Scriban] Template parse errors:");
+			foreach (var msg in template.Messages)
+				Console.WriteLine($"  {msg}");
+		}
 
-		// Create a PDF document
+		string filledText = template.Render(model);
+		Console.WriteLine("===== FilledText START =====");
+		// Show each line explicitly
+		foreach (var line in filledText.Split('\n'))
+		{
+			Console.WriteLine($"|{line}|");
+		}
+		Console.WriteLine("===== FilledText END =====");
+
+		// Create PDF
 		using var document = new PdfDocument();
 		var page = document.AddPage();
 		var gfx = XGraphics.FromPdfPage(page);
 
 		GlobalFontSettings.FontResolver = new FontReseolver();
-		var font = new XFont("OpenSans", 14);
+		// Test drawing a simple string first:
+		var testFont = new XFont("OpenSans", 12);
+		gfx.DrawString("DEBUG: Hello World", testFont, XBrushes.Black,
+					   new XRect(40, 40, page.Width - 80, 20), XStringFormats.TopLeft);
 
-		// Split text into lines and draw them
-		double y = 40;
+		// Draw filledText lines
+		double y = 70; // start below DEBUG text
 		foreach (var line in filledText.Split('\n'))
 		{
-			gfx.DrawString(line.Trim(), font, XBrushes.Black, new XRect(40, y, page.Width - 80, page.Height - y), XStringFormats.TopLeft);
+			var text = line.Trim();
+			Console.WriteLine($"Drawing line at y={y}: '{text}'");
+			gfx.DrawString(text, testFont, XBrushes.Black,
+						   new XRect(40, y, page.Width - 80, page.Height - y), XStringFormats.TopLeft);
 			y += 20;
 		}
 
-		// Save to memory stream
 		using var ms = new MemoryStream();
 		document.Save(ms, false);
+		Console.WriteLine("[GeneratePolicyPdf] PDF byte length: " + ms.Length);
 		return ms.ToArray();
 	}
 }

@@ -114,17 +114,18 @@ namespace MyTelegramBot
 							return;
 						}
 
-						//	MindeeClient mindeeClient = new(mindeeApiKey);
-						//	var inputSource = new LocalInputSource(photoBytes, $"license_{photo.FileId}.jpg");
-						//	//input here
-						//	var response = await mindeeClient.EnqueueAndParseAsync<DriverLicenseV1>(inputSource);
-						//	var driverLicense = response.Document.Inference.Prediction;
-						//
-						//	dateOfBirth = driverLicense.DateOfBirth?.Value ?? "Not found";
-						//	licenseNumber = driverLicense.Id?.Value ?? "Not found";
-						//	licenseClass = driverLicense.Category?.Value ?? "Not found";
-						//	expiryDate = driverLicense.ExpiryDate?.Value ?? "Not found";
-						//	countryCode = driverLicense.CountryCode?.Value ?? "Not found";\
+						MindeeClient mindeeClient = new(mindeeApiKey);
+						var inputSource = new LocalInputSource(photoBytes, $"license_{photo.FileId}.jpg");
+						//input here
+						var response = await mindeeClient.EnqueueAndParseAsync<DriverLicenseV1>(inputSource);
+						var driverLicense = response.Document.Inference.Prediction;
+
+						dateOfBirth = driverLicense.DateOfBirth?.Value ?? "Not found";
+						licenseNumber = driverLicense.Id?.Value ?? "Not found";
+						licenseClass = driverLicense.Category?.Value ?? "Not found";
+						expiryDate = driverLicense.ExpiryDate?.Value ?? "Not found";
+						countryCode = driverLicense.CountryCode?.Value ?? "Not found";\
+						fullName = "Not Found";
 						dateOfBirth = "Not found";
 						licenseNumber = "Not found";
 						licenseClass = "Not found";
@@ -214,24 +215,39 @@ namespace MyTelegramBot
 
 					userStates[id] = BotState.sendPolicy;
 					//policy here
-					GlobalFontSettings.FontResolver = new FontReseolver();
-					var policy = PolicyPdfGenerator.GeneratePolicyPdf(fullName, dateOfBirth, licenseNumber, licenseClass, expiryDate, countryCode);
-					using (var stream = new MemoryStream(policy))
+
+					GlobalFontSettings.FontResolver = new DefaultFontResolver_unused();
+					var policyBytes = PolicyPdfGenerator.GeneratePolicyPdf(fullName, dateOfBirth, licenseNumber, licenseClass, expiryDate, countryCode);
+					Console.WriteLine($"Generated PDF length: {policyBytes?.Length}");
+
+					// 1. Save to local file for inspection
+					var fileName = $"CarInsurancePolicy_{DateTime.Today:yyyy-MM-dd}.pdf";
+					var filePath = Path.Combine(AppContext.BaseDirectory, fileName); // or any folder you choose
+					try
 					{
-						Console.WriteLine($"fullName: {fullName}");
-						Console.WriteLine($"dateOfBirth: {dateOfBirth}");
-						Console.WriteLine($"licenseNumber: {licenseNumber}");
-						Console.WriteLine($"licenseClass: {licenseClass}");
-						Console.WriteLine($"expiryDate: {expiryDate}");
-						Console.WriteLine($"countryCode: {countryCode}");
+						File.WriteAllBytes(filePath, policyBytes);
+						Console.WriteLine($"PDF saved locally at: {filePath}");
+					}
+					catch (Exception ex)
+					{
+						Console.WriteLine($"Error saving PDF locally: {ex.Message}");
+					}
 
-						var doc = InputFile.FromStream(stream, $"CarInsurancePolicy_{DateTime.Today.ToString("dd-MM-yyyy")}");
-
+					// 2. Send the saved file via Telegram
+					try
+					{
+						using var fileStream = File.OpenRead(filePath);
+						var doc = InputFile.FromStream(fileStream, fileName);
 						await client.SendDocument(
 							chatId: id,
 							document: doc,
 							caption: "📄 Here is your generated insurance policy.\nHave a nice day!"
 						);
+						Console.WriteLine("PDF sent via Telegram.");
+					}
+					catch (Exception ex)
+					{
+						Console.WriteLine($"Error sending PDF via Telegram: {ex.Message}");
 					}
 					break;
 
