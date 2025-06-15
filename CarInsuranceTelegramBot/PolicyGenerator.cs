@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Options;
+﻿using CarInsuranceTelegramBot;
+using Microsoft.Extensions.Options;
 using PdfSharp.Drawing;
 using PdfSharp.Fonts;
 using PdfSharp.Pdf;
@@ -26,6 +27,7 @@ public class PolicyPdfGenerator
 			start_date = DateTime.Now.ToString("yyyy-MM-dd"),
 			end_date = DateTime.Now.AddYears(1).ToString("yyyy-MM-dd")
 		};
+
 		string policyText = @"
 Insurance Policy Document
 -------------------------
@@ -76,9 +78,7 @@ Thank you for choosing our insurance service.
 		GlobalFontSettings.FontResolver = new FontReseolver();
 		// Test drawing a simple string first:
 		var testFont = new XFont("OpenSans", 12);
-		gfx.DrawString("DEBUG: Hello World", testFont, XBrushes.Black,
-					   new XRect(40, 40, page.Width - 80, 20), XStringFormats.TopLeft);
-
+		
 		// Draw filledText lines
 		double y = 70; // start below DEBUG text
 		foreach (var line in filledText.Split('\n'))

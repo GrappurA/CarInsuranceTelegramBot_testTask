@@ -23,8 +23,11 @@ namespace CarInsuranceTelegramBot
 			bot = new(token);
 		}
 
-		public void Start()
+		public async Task Start()
 		{
+			await bot.DeleteWebhook();
+			Console.WriteLine("deleted webhook");
+
 			bot.StartReceiving(UpdateHandler, ErrorHandler);
 			Console.WriteLine("Bot started.");
 		}
@@ -36,7 +39,7 @@ namespace CarInsuranceTelegramBot
 		}
 
 		private async Task UpdateHandler(ITelegramBotClient client, Update update, CancellationToken token)
-		{   
+		{
 			Console.WriteLine(update.Message?.Text ?? "Not a text message");
 
 			if (update.Type == Telegram.Bot.Types.Enums.UpdateType.CallbackQuery && update.CallbackQuery != null)

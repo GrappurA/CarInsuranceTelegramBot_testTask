@@ -24,22 +24,21 @@ namespace MyTelegramBot
 
 		static string helpMessage = "/start - Get started with the bot\n/help - Display help message.";
 		static string photoReceivedMessage = "I received your info. Please wait while I analyze it.\n<b>Processing...</b>";
-		static string greetingsMessage = "<b>Greetings!</b>\nI am here to help you buy insurance.\nPlease send a photo of driver license";
+		static string greetingsMessage = "<b>Greetings!</b>\nI am here to help you buy insurance.\nPlease send a photo of your vehicle registration certificate";
 		static string pricingMessage = "Our current insurance price is <b>100 USD</b>.\nAre you comfortable with the price?";
 		static string verifyPricingMessage = "Unfortunately, <b>100 USD</b> is our only pricing plan.";
 		static string pricingAcceptedMessage = "<b>Great!</b>\nGenerating your insurance policy...";
+		static string unplannedMessage = "Please, send the documents as requested.\nI am not designed to respond to messages other than those needed to provide you with <b>insurance policy</b>";
+		static string botWorkflowExpalinedMessage = "If you're interested, i am going to scan your documents, reveal all neccessary data to create an <b>insurance policy</b>.\nYour data being:<b>Name, Age, License Number, License Class etc.</b>";
+		static string registrationConfirmedMessage = "<b>Great!</b>Now, send the photo of your driving license please.";
+
+		static DriverLicenseInfo driverLicenseInfo = new();
+		static VehicleInfo vehicleInfo = new();
 
 		static Dictionary<long, BotState> userStates = new();
 		static int verifyMessageId;
 		static Message? verifyMessage;
 		static Message? editPricingMessage;
-
-		static string fullName;
-		static string dateOfBirth;
-		static string licenseNumber;
-		static string licenseClass;
-		static string expiryDate;
-		static string countryCode;
 
 		static bool flag = false;
 
@@ -89,18 +88,23 @@ namespace MyTelegramBot
 				{
 					case "/start":
 						await client.SendMessage(id, greetingsMessage, parseMode: ParseMode.Html);
-						userStates[id] = BotState.sendPhoto;
+						userStates[id] = BotState.sendRegistration;
 						flag = false;
 						return;
 					case "/help":
 						await client.SendMessage(id, helpMessage);
 						return;
+
+					case "/debug":
+						await client.SendMessage(id, "send photo");
+						userStates[id] = BotState.sendRegistration;
+
+						return;
 				}
 
-				if (update.Message?.Type == MessageType.Photo && userStates[id] == BotState.sendPhoto)
+				if (update.Message?.Type == MessageType.Photo && userStates[id] == BotState.sendLicense)
 				{
 					await client.SendMessage(id, photoReceivedMessage, parseMode: ParseMode.Html);
-					await Task.Delay(600);
 
 					try
 					{
@@ -114,31 +118,16 @@ namespace MyTelegramBot
 							return;
 						}
 
-						MindeeClient mindeeClient = new(mindeeApiKey);
-						var inputSource = new LocalInputSource(photoBytes, $"license_{photo.FileId}.jpg");
-						//input here
-						var response = await mindeeClient.EnqueueAndParseAsync<DriverLicenseV1>(inputSource);
-						var driverLicense = response.Document.Inference.Prediction;
-
-						dateOfBirth = driverLicense.DateOfBirth?.Value ?? "Not found";
-						licenseNumber = driverLicense.Id?.Value ?? "Not found";
-						licenseClass = driverLicense.Category?.Value ?? "Not found";
-						expiryDate = driverLicense.ExpiryDate?.Value ?? "Not found";
-						countryCode = driverLicense.CountryCode?.Value ?? "Not found";\
-						fullName = "Not Found";
-						dateOfBirth = "Not found";
-						licenseNumber = "Not found";
-						licenseClass = "Not found";
-						expiryDate = "Not found";
-						countryCode = "Not found";
+						ExtractedData extractedData = new();
+						driverLicenseInfo = await extractedData.GetDriverLicense(photo, photoBytes);
 
 						await client.SendMessage(id,
-							$"<b>Full Name:</b> {fullName}\n" +
-							$"<b>Date of Birth:</b> {dateOfBirth}\n" +
-							$"<b>License Number:</b> {licenseNumber}\n" +
-							$"<b>License Class:</b> {licenseClass}\n" +
-							$"<b>Expiry Date:</b> {expiryDate}\n" +
-							$"<b>Address:</b> {countryCode}",
+							$"<b>Full Name:</b> {driverLicenseInfo.fullName}\n" +
+							$"<b>Date of Birth:</b> {driverLicenseInfo.dateOfBirth}\n" +
+							$"<b>License Number:</b> {driverLicenseInfo.licenseNumber}\n" +
+							$"<b>License Class:</b> {driverLicenseInfo.licenseClass}\n" +
+							$"<b>Expiry Date:</b> {driverLicenseInfo.expiryDate}\n" +
+							$"<b>Address:</b> {driverLicenseInfo.countryCode}",
 							parseMode: ParseMode.Html);
 
 						var verifyButtons = new InlineKeyboardMarkup(new[]
@@ -152,7 +141,7 @@ namespace MyTelegramBot
 
 						verifyMessage = await client.SendMessage(id, "Is this data correct?", replyMarkup: verifyButtons);
 						verifyMessageId = verifyMessage.MessageId;
-						userStates[id] = BotState.ConfirmPhotoData;
+						userStates[id] = BotState.ConfirmLicense;
 
 					}
 					catch (Exception ex)
@@ -168,6 +157,44 @@ namespace MyTelegramBot
 				{
 					await client.SendMessage(id, "Type /start to begin.");
 				}
+
+				else if (update.Message.Type == MessageType.Text && userStates[id] != BotState.Start)
+				{
+					string input = update.Message.Text;
+					if (input.Contains("what") || input.Contains("why") || input.Contains("when"))
+					{
+						await client.SendMessage(id, text: botWorkflowExpalinedMessage, parseMode: ParseMode.Html);
+					}
+					else
+						await client.SendMessage(id, parseMode: ParseMode.Html, text: unplannedMessage);
+
+				}
+
+				else if (update.Message.Type == MessageType.Photo && userStates[id] == BotState.sendRegistration)
+				{
+					var verifyRegistrationKeyboard = new InlineKeyboardMarkup(new[]
+					{
+						new[]
+						{
+							InlineKeyboardButton.WithCallbackData("✅ Yes", "registration_yes"),
+							InlineKeyboardButton.WithCallbackData("❌ No", "registration_no")
+						}
+					});
+
+					var photo = update.Message.Photo[^1];
+					var photoBytes = await DownloadPhotoAsync(client, photo);
+
+					vehicleInfo = await ExtractedData.GetVehicleRegistarion(photo, photoBytes);
+					await client.SendMessage(id, text: $"<b>Is this data Correct?</b>\n" +
+						$"<b>Vin:</b> {vehicleInfo.Vin}\n" +
+						$"<b>Plate:</b> {vehicleInfo.Plate}\n" +
+						$"<b>Brand:</b> {vehicleInfo.Brand}\n" +
+						$"<b>Year:</b> {vehicleInfo.Year}\n",
+						replyMarkup: verifyRegistrationKeyboard,
+						parseMode: ParseMode.Html
+						);
+				}
+
 			}
 		}
 
@@ -189,7 +216,7 @@ namespace MyTelegramBot
 			});
 			switch (data)
 			{
-				case "confirm_yes" when userStates[id] == BotState.ConfirmPhotoData:
+				case "confirm_yes" when userStates[id] == BotState.ConfirmLicense:
 					await client.EditMessageText(id, verifyMessageId, "✅ Thank you! We will now continue to pricing.");
 
 
@@ -201,9 +228,9 @@ namespace MyTelegramBot
 					userStates[id] = BotState.AgreeToPricing;
 					break;
 
-				case "confirm_no" when userStates[id] == BotState.ConfirmPhotoData:
+				case "confirm_no" when userStates[id] == BotState.ConfirmLicense:
 					await client.EditMessageText(id, verifyMessageId, "❌ Please, retake the photo and send it again.");
-					userStates[id] = BotState.sendPhoto;
+					userStates[id] = BotState.sendLicense;
 					break;
 
 				case "pricing_yes" when userStates[id] == BotState.AgreeToPricing:
@@ -217,7 +244,13 @@ namespace MyTelegramBot
 					//policy here
 
 					GlobalFontSettings.FontResolver = new DefaultFontResolver_unused();
-					var policyBytes = PolicyPdfGenerator.GeneratePolicyPdf(fullName, dateOfBirth, licenseNumber, licenseClass, expiryDate, countryCode);
+					var policyBytes = PolicyPdfGenerator.GeneratePolicyPdf(
+						driverLicenseInfo.fullName,
+						driverLicenseInfo.dateOfBirth,
+						driverLicenseInfo.licenseNumber,
+						driverLicenseInfo.licenseClass,
+						driverLicenseInfo.expiryDate,
+						driverLicenseInfo.countryCode);
 					Console.WriteLine($"Generated PDF length: {policyBytes?.Length}");
 
 					// 1. Save to local file for inspection
@@ -269,10 +302,17 @@ namespace MyTelegramBot
 					flag = true;
 					break;
 
-				case "pricingConfirm_no" when userStates[id] == BotState.AgreeToPricing:
+				case "registration_yes" when userStates[id] == BotState.sendRegistration:
+					await client.SendMessage(id, registrationConfirmedMessage, parseMode: ParseMode.Html);
+					userStates[id] = BotState.sendLicense;
+
+					break;
+
+				case "registration_no" when userStates[id] == BotState.sendRegistration:
 					await client.EditMessageText(id,
 						editPricingMessage.Id,
-						"Sorry, i can't help you then.");
+						"❌ Please, retake the photo and send it again.");
+					userStates[id] = BotState.sendRegistration;
 					break;
 
 				default:
@@ -285,8 +325,10 @@ namespace MyTelegramBot
 	public enum BotState
 	{
 		Start,
-		sendPhoto,
-		ConfirmPhotoData,
+		sendLicense,
+		ConfirmLicense,
+		sendRegistration,
+		ConfirmRegistration,
 		AgreeToPricing,
 		sendPolicy
 	}
