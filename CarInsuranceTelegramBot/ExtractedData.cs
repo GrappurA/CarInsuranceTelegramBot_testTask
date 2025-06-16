@@ -53,35 +53,33 @@ namespace CarInsuranceTelegramBot
 			Console.Write(allText);
 
 			//looking for info
-			//brand
+			// Brand
 			var brandMatch = Process.ExtractOne(allText, knownBrands);
-			if (brandMatch.Score > 55)
+			if (brandMatch != null && brandMatch.Score > 55)
 			{
-				year = brandMatch.Value;
+				brand = brandMatch.Value;
 			}
-			//vin
+
+			// VIN
 			var vinMatch = Regex.Match(allText, "[A-Za-z0-9]{17}");
 			if (vinMatch.Success)
 			{
 				vin = vinMatch.Value;
 			}
-			//year
+
+			// Year
 			var yearMatch = Regex.Matches(allText, @"\b(19|20)\d{2}\b");
 			List<int> years = new List<int>();
 			foreach (Match item in yearMatch)
 			{
 				years.Add(int.Parse(item.Value));
 			}
-			year = years.Min(x => x).ToString();
-			/*
-			List<int> years = new();
-			foreach (var item in yearMatch)
+			if (years.Count > 0)
 			{
-				years.Add(Convert.ToInt32(item));
+				year = years.Min().ToString();
 			}
-			year = years.Min(x => x).ToString();
-			*/
-			//plate
+
+			// Plate
 			var plateMatch = Regex.Match(allText, @"\b[A-Z]{2,4}[0-9]{2,4}\b");
 			if (plateMatch.Success)
 			{

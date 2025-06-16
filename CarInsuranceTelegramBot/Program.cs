@@ -30,7 +30,7 @@ namespace MyTelegramBot
 		static string pricingAcceptedMessage = "<b>Great!</b>\nGenerating your insurance policy...";
 		static string unplannedMessage = "Please, send the documents as requested.\nI am not designed to respond to messages other than those needed to provide you with <b>insurance policy</b>";
 		static string botWorkflowExpalinedMessage = "If you're interested, i am going to scan your documents, reveal all neccessary data to create an <b>insurance policy</b>.\nYour data being:<b>Name, Age, License Number, License Class etc.</b>";
-		static string registrationConfirmedMessage = "<b>Great!</b>Now, send the photo of your driving license please.";
+		static string registrationConfirmedMessage = "<b>✅Great!\n</b>Now, send the photo of your driving license please.";
 
 		static DrivingLicenseInfo driverLicenseInfo = new();
 		static VehicleInfo vehicleInfo = new();
