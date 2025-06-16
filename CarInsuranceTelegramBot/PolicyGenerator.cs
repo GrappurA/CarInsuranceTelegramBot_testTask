@@ -9,21 +9,26 @@ using System.IO;
 
 public class PolicyPdfGenerator
 {
-	public static byte[] GeneratePolicyPdf(string fullName, string dateOfBirth, string licenseNumber,
-									   string licenseClass, string expiryDate, string countryCode)
+	public static byte[] GeneratePolicyPdf(DrivingLicenseInfo license, VehicleInfo registration)
 	{
-		Console.WriteLine($"[GeneratePolicyPdf] fullName={fullName}, dateOfBirth={dateOfBirth}, licenseNumber={licenseNumber}, licenseClass={licenseClass}, expiryDate={expiryDate}, countryCode={countryCode}");
+		Console.WriteLine($"[GeneratePolicyPdf] fullName={license.fullName}, dateOfBirth={license.dateOfBirth}, licenseNumber={license.licenseNumber}, licenseClass={license.licenseClass}, expiryDate={license.expiryDate}, countryCode={license.countryCode}");
 
 		// Define template as verbatim string so "{{...}}" reaches Scriban intact
 		var model = new
 		{
 			policy_number = $"POL-{Guid.NewGuid():N}".Substring(0, 8),
-			full_name = fullName,
-			birth_date = dateOfBirth,
-			license_number = licenseNumber,
-			license_class = licenseClass,
-			expiry_date = expiryDate,
-			country_code = countryCode,
+			full_name = license.fullName,
+			birth_date = license.dateOfBirth,
+			license_number = license.licenseNumber,
+			license_class = license.licenseClass,
+			expiry_date = license.expiryDate,
+			country_code = license.countryCode,
+
+			vin = registration.Vin,
+			plate = registration.Plate,
+			brand = registration.Brand,
+			year = registration.Year,
+
 			start_date = DateTime.Now.ToString("yyyy-MM-dd"),
 			end_date = DateTime.Now.AddYears(1).ToString("yyyy-MM-dd")
 		};
@@ -31,7 +36,7 @@ public class PolicyPdfGenerator
 		string policyText = @"
 Insurance Policy Document
 -------------------------
-
+License Info:
 Policy Number   : {{ policy_number }}
 Full Name       : {{ full_name }}
 Date of Birth   : {{ birth_date }}
@@ -39,6 +44,13 @@ License Number  : {{ license_number }}
 License Class   : {{ license_class }}
 Expiry Date     : {{ expiry_date }}
 Country Code    : {{ country_code }}
+
+-------------------------
+Vehicle Info:
+VIN             : {{vin}}
+Plate           : {{plate}}
+Brand           : {{brand}}
+Year            : {{year}}
 
 -------------------------
 Insurance Start date : {{ start_date }}
@@ -78,7 +90,7 @@ Thank you for choosing our insurance service.
 		GlobalFontSettings.FontResolver = new FontReseolver();
 		// Test drawing a simple string first:
 		var testFont = new XFont("OpenSans", 12);
-		
+
 		// Draw filledText lines
 		double y = 70; // start below DEBUG text
 		foreach (var line in filledText.Split('\n'))

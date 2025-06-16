@@ -10,6 +10,7 @@ using Telegram.Bot.Types;
 using Google.Cloud.Vision.V1;
 using SixLabors.ImageSharp;
 using System.Text.RegularExpressions;
+using FuzzySharp;
 
 namespace CarInsuranceTelegramBot
 {
@@ -17,7 +18,7 @@ namespace CarInsuranceTelegramBot
 	{
 		static string mindeeApiKey = File.ReadAllText("G:\\Studying\\telegramBot\\config\\mindee.txt");
 
-		public async Task<DriverLicenseInfo> GetDriverLicense(PhotoSize? photo, byte[] photoBytes)
+		public async Task<DrivingLicenseInfo> GetDriverLicense(PhotoSize? photo, byte[] photoBytes)
 		{
 			MindeeClient mindeeClient = new(mindeeApiKey);
 			var inputSource = new LocalInputSource(photoBytes, $"license_{photo.FileId}.jpg");
@@ -25,7 +26,7 @@ namespace CarInsuranceTelegramBot
 			var response = await mindeeClient.EnqueueAndParseAsync<DriverLicenseV1>(inputSource);
 			var driverLicense = response.Document.Inference.Prediction;
 
-			var driverLicenseInfo = new DriverLicenseInfo
+			var drivingLicenseInfo = new DrivingLicenseInfo
 			{
 				fullName = driverLicense.FirstName.Value + driverLicense.LastName.Value ?? "Not found",
 				dateOfBirth = driverLicense.DateOfBirth?.Value ?? "Not found",
@@ -35,7 +36,7 @@ namespace CarInsuranceTelegramBot
 				countryCode = driverLicense.CountryCode?.Value ?? "Not found"
 			};
 
-			return driverLicenseInfo;
+			return drivingLicenseInfo;
 		}
 
 		public static async Task<VehicleInfo> GetVehicleRegistarion(PhotoSize? photo, byte[] photoBytes)
@@ -46,18 +47,17 @@ namespace CarInsuranceTelegramBot
 			string allText = string.Join("\n", response.Select(a => a.Description)).ToLower();
 
 			string vin = "Not found", brand = "Not found", year = "Not found", plate = "Not found";
-			string[] knownBrands = { "toyota", "honda", "ford", "chevrolet", "bmw", "audi", "hyundai", "nissan", "kia", "mercedes" };
+			string[] knownBrands = { "toyota", "honda", "ford", "chevrolet", "bmw", "audi",
+				"hyundai", "nissan", "kia", "mercedes", "dodge" };
 
 			Console.Write(allText);
 
 			//looking for info
 			//brand
-			foreach (var brandCandidate in knownBrands)
+			var brandMatch = Process.ExtractOne(allText, knownBrands);
+			if (brandMatch.Score > 55)
 			{
-				if (allText.Contains(brandCandidate))
-				{
-					brand = brandCandidate;
-				}
+				year = brandMatch.Value;
 			}
 			//vin
 			var vinMatch = Regex.Match(allText, "[A-Za-z0-9]{17}");
@@ -67,7 +67,12 @@ namespace CarInsuranceTelegramBot
 			}
 			//year
 			var yearMatch = Regex.Matches(allText, @"\b(19|20)\d{2}\b");
-			year = yearMatch.Select(m => m.Value).FirstOrDefault();
+			List<int> years = new List<int>();
+			foreach (Match item in yearMatch)
+			{
+				years.Add(int.Parse(item.Value));
+			}
+			year = years.Min(x => x).ToString();
 			/*
 			List<int> years = new();
 			foreach (var item in yearMatch)

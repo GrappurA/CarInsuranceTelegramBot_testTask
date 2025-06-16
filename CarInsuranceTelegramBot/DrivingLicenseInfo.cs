@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace CarInsuranceTelegramBot
 {
-	public class DriverLicenseInfo
+	public class DrivingLicenseInfo
 	{
 		public string fullName { get; set; } = "";
 		public string dateOfBirth { get; set; } = "";

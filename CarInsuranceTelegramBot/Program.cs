@@ -17,10 +17,10 @@ namespace MyTelegramBot
 	class Program
 	{
 
-		static string telegramToken = "8068426185:AAHxN2uBeLvZyQuoZIR49g1KEyVHV5mQZmY";
-		static string mindeeApiKey = "a9851a63943dab08b4a8bbbb9fc9c313";
+		static string telegramToken = File.ReadAllText("G:\\Studying\\telegramBot\\config\\telegram.txt");
+		static string mindeeApiKey = File.ReadAllText("G:\\Studying\\telegramBot\\config\\mindee.txt");
 		static long? myTelegramId = 875371626;
-		static string GeminiApiKey = "AIzaSyBZHC0fNuqQF3PCI0fQoAyFjIayIe0jtwk";
+		static string GeminiApiKey = File.ReadAllText("G:\\Studying\\telegramBot\\config\\gemini.txt");
 
 		static string helpMessage = "/start - Get started with the bot\n/help - Display help message.";
 		static string photoReceivedMessage = "I received your info. Please wait while I analyze it.\n<b>Processing...</b>";
@@ -32,13 +32,14 @@ namespace MyTelegramBot
 		static string botWorkflowExpalinedMessage = "If you're interested, i am going to scan your documents, reveal all neccessary data to create an <b>insurance policy</b>.\nYour data being:<b>Name, Age, License Number, License Class etc.</b>";
 		static string registrationConfirmedMessage = "<b>Great!</b>Now, send the photo of your driving license please.";
 
-		static DriverLicenseInfo driverLicenseInfo = new();
+		static DrivingLicenseInfo driverLicenseInfo = new();
 		static VehicleInfo vehicleInfo = new();
 
 		static Dictionary<long, BotState> userStates = new();
 		static int verifyMessageId;
 		static Message? verifyMessage;
 		static Message? editPricingMessage;
+		static Message? editRegistrationMessage;
 
 		static bool flag = false;
 
@@ -185,7 +186,7 @@ namespace MyTelegramBot
 					var photoBytes = await DownloadPhotoAsync(client, photo);
 
 					vehicleInfo = await ExtractedData.GetVehicleRegistarion(photo, photoBytes);
-					await client.SendMessage(id, text: $"<b>Is this data Correct?</b>\n" +
+					editRegistrationMessage = await client.SendMessage(id, text: $"<b>Is this data Correct?</b>\n" +
 						$"<b>Vin:</b> {vehicleInfo.Vin}\n" +
 						$"<b>Plate:</b> {vehicleInfo.Plate}\n" +
 						$"<b>Brand:</b> {vehicleInfo.Brand}\n" +
@@ -193,6 +194,7 @@ namespace MyTelegramBot
 						replyMarkup: verifyRegistrationKeyboard,
 						parseMode: ParseMode.Html
 						);
+
 				}
 
 			}
@@ -244,13 +246,8 @@ namespace MyTelegramBot
 					//policy here
 
 					GlobalFontSettings.FontResolver = new DefaultFontResolver_unused();
-					var policyBytes = PolicyPdfGenerator.GeneratePolicyPdf(
-						driverLicenseInfo.fullName,
-						driverLicenseInfo.dateOfBirth,
-						driverLicenseInfo.licenseNumber,
-						driverLicenseInfo.licenseClass,
-						driverLicenseInfo.expiryDate,
-						driverLicenseInfo.countryCode);
+					var policyBytes = PolicyPdfGenerator.GeneratePolicyPdf(driverLicenseInfo, vehicleInfo);
+
 					Console.WriteLine($"Generated PDF length: {policyBytes?.Length}");
 
 					// 1. Save to local file for inspection
@@ -303,14 +300,14 @@ namespace MyTelegramBot
 					break;
 
 				case "registration_yes" when userStates[id] == BotState.sendRegistration:
-					await client.SendMessage(id, registrationConfirmedMessage, parseMode: ParseMode.Html);
+					await client.EditMessageText(id, editRegistrationMessage.Id, registrationConfirmedMessage, parseMode: ParseMode.Html);
 					userStates[id] = BotState.sendLicense;
 
 					break;
 
 				case "registration_no" when userStates[id] == BotState.sendRegistration:
 					await client.EditMessageText(id,
-						editPricingMessage.Id,
+						editRegistrationMessage.Id,
 						"❌ Please, retake the photo and send it again.");
 					userStates[id] = BotState.sendRegistration;
 					break;
