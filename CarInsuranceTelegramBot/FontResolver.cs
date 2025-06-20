@@ -18,7 +18,7 @@ public class FontReseolver : IFontResolver
 	{
 		if (faceName == "OpenSans-Regular#")
 		{
-			var path = Path.Combine(AppContext.BaseDirectory, "fonts", "OpenSans-Regular.ttf");
+			var path = Path.Combine("G:\\Studying\\telegramBot\\fonts", "OpenSans-Regular.ttf");
 			if (!File.Exists(path))
 				throw new FileNotFoundException(path);
 			return File.ReadAllBytes(path);
